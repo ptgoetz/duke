@@ -164,8 +164,45 @@ public class Processor {
                    Collection<DataSource> sources2,
                    int batch_size) throws IOException {
     // first, index up group 1
+    buildIndex(sources1, batch_size);
+
+    // second, traverse group 2 to look for matches with group 1
+    linkRecords(sources2);
+  }
+
+
+  /**
+   * Retrieve new records from data sources, and match them to
+   * previously indexed records. This method does <em>not</em> index
+   * the new records.
+   */
+  public void linkRecords(Collection<DataSource> sources) throws IOException {
+    for (DataSource source : sources) {
+      source.setLogger(logger);
+
+      RecordIterator it2 = source.getRecords();
+      while (it2.hasNext()) {
+        Record record = it2.next();
+        boolean found = matchRL(record);
+        if (!found)
+          for (MatchListener listener : listeners)
+            listener.noMatchFor(record);
+      }
+      it2.close();
+    }
+
+    for (MatchListener listener : listeners)
+      listener.endProcessing();
+  }
+
+  /**
+   * Index all new records from the given data sources. This method
+   * does <em>not</em> do any matching.
+   */
+  public void buildIndex(Collection<DataSource> sources, int batch_size)
+    throws CorruptIndexException, IOException {
     int count = 0;
-    for (DataSource source : sources1) {
+    for (DataSource source : sources) {
       source.setLogger(logger);
 
       RecordIterator it2 = source.getRecords();
@@ -185,24 +222,6 @@ public class Processor {
         listener.batchReady(count % batch_size);
     }
     database.commit();
-
-    // second, traverse group 2 to look for matches with group 1
-    for (DataSource source : sources2) {
-      source.setLogger(logger);
-
-      RecordIterator it2 = source.getRecords();
-      while (it2.hasNext()) {
-        Record record = it2.next();
-        boolean found = matchRL(record);
-        if (!found)
-          for (MatchListener listener : listeners)
-            listener.noMatchFor(record);
-      }
-      it2.close();
-    }
-
-    for (MatchListener listener : listeners)
-      listener.endProcessing();
   }
 
   // FIXME: it's possible that this method should be public
